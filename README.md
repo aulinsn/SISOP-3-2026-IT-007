@@ -333,7 +333,315 @@ if (strcmp(message, "exit") == 0) break;
 5. Isi `history.log`      
    <img width="468" height="295" alt="image" src="https://github.com/user-attachments/assets/d531184d-8c71-45b1-a4db-ac50e7e97944" />
 
+
+
+
+
+## Soal 2 : The Battle of Eterion (Multi-Process Simulation)
+
+Program ini dibuat untuk:
+
+* Mengimplementasikan komunikasi antar proses menggunakan **shared memory**
+* Mengelola sistem game berbasis multi-process
+* Menyinkronkan akses data menggunakan mutex
+* Menghindari race condition pada data bersama
+
+---
+
+## Alur Program:
+
+1. Program `orion` membuat shared memory
+2. Program `eternal` terhubung ke shared memory
+3. User melakukan register / login
+4. Player masuk ke sistem arena
+5. Sistem melakukan matchmaking
+6. Battle berlangsung (player vs player / bot)
+7. Data player diperbarui
+8. Reward dan history disimpan
+9. Program berjalan berulang
+
+---
+
+## Penjelasan
+
+---
+
+### 1. Struktur Shared Memory (`arena.h`)
+
+```c
+typedef struct {
+    Player players[MAX_PLAYERS];
+    int player_count;
+
+    int waiting_player;
+    int opponent[MAX_PLAYERS];
+
+    pthread_mutex_t lock;
+} SharedData;
+```
+
+#### Penjelasan:
+
+* Menyimpan seluruh data player
+* `waiting_player` → player yang sedang menunggu lawan
+* `opponent[]` → pasangan battle
+* `lock` → untuk sinkronisasi akses data
+
+
+
+---
+
+### 2. Membuat Shared Memory (`orion.c`)
+
+```c
+key_t key = 1234;
+shmid = shmget(key, sizeof(SharedData), IPC_CREAT | 0666);
+data = shmat(shmid, NULL, 0);
+```
+
+#### Penjelasan:
+
+* `shmget()` membuat shared memory
+* `shmat()` menghubungkan memory ke program
+* digunakan sebagai media komunikasi antar proses
+
+
+
+---
+
+### 3. Inisialisasi Data
+
+```c
+data->player_count = 0;
+data->waiting_player = -1;
+
+pthread_mutex_init(&data->lock, NULL);
+```
+
+#### Penjelasan:
+
+* Mengatur kondisi awal sistem
+* `waiting_player = -1` → belum ada yang menunggu
+* mutex digunakan untuk menjaga konsistensi data
+
+---
+
+### 4. Cleanup Shared Memory
+
+```c
+void cleanup(int sig){
+    shmctl(shmid, IPC_RMID, NULL);
+}
+```
+
+#### Penjelasan:
+
+* Menghapus shared memory saat program dihentikan
+* mencegah memory leak
+
+---
+
+### 5. Mengakses Shared Memory (`eternal.c`)
+
+```c
+key_t key=1234;
+int shmid=shmget(key,sizeof(SharedData),0666);
+data=shmat(shmid,NULL,0);
+```
+
+#### Penjelasan:
+
+* `eternal` hanya mengakses shared memory yang sudah dibuat
+* jika belum ada → program tidak berjalan
+
+
+
+---
+
+### 6. Sistem Register
+
+```c
+Player *pl=&data->players[data->player_count++];
+
+strcpy(pl->username,u);
+strcpy(pl->password,p);
+pl->gold=150;
+pl->xp=0;
+pl->level=1;
+```
+
+#### Penjelasan:
+
+* Menambahkan player baru ke shared memory
+* Set atribut awal:
+
+  * gold
+  * XP
+  * level
+
+---
+
+### 7. Sistem Login
+
+```c
+if(strcmp(data->players[i].username,u)==0 &&
+   strcmp(data->players[i].password,p)==0){
+```
+
+#### Penjelasan:
+
+* Validasi username dan password
+* memastikan user tidak login ganda
+
+---
+
+### 8. Matchmaking System
+
+```c
+if(data->waiting_player == -1){
+    data->waiting_player = idx;
+}
+```
+
+#### Penjelasan:
+
+* Jika belum ada player:
+
+  * masuk ke antrian
+* Jika ada:
+
+  * langsung dipasangkan
+
+---
+
+### 9. Battle System
+
+```c
+enemy_hp -= get_damage(data->players[idx]);
+my_hp -= get_damage(data->players[enemy]);
+```
+
+#### Penjelasan:
+
+* Pertarungan berlangsung real-time
+* damage dihitung dari:
+
+  * base damage
+  * XP
+  * weapon
+
+---
+
+### 10. Melawan Bot
+
+```c
+if(data->opponent[idx]==-1){
+    printf("Fight BOT\n");
+}
+```
+
+#### Penjelasan:
+
+* Jika tidak ada player lain
+* sistem otomatis melawan bot
+
+---
+
+### 11. Reward System
+
+```c
+data->players[idx].xp += 50;
+data->players[idx].gold += 120;
+```
+
+#### Penjelasan:
+
+* Player mendapatkan reward setelah menang
+* XP digunakan untuk leveling
+
+---
+
+### 12. Level Up
+
+```c
+int lvl = (p->xp/100)+1;
+```
+
+#### Penjelasan:
+
+* Level meningkat berdasarkan XP
+* sistem progression player
+
+---
+
+### 13. Armory System
+
+```c
+if(p->gold >= weapons[c-1].price){
+    p->weapon = c-1;
+}
+```
+
+#### Penjelasan:
+
+* Player dapat membeli senjata
+* meningkatkan damage
+
+---
+
+### 14. History System
+
+```c
+strcpy(h->opponent, opp);
+strcpy(h->result, res);
+```
+
+#### Penjelasan:
+
+* Menyimpan riwayat battle
+* berisi:
+
+  * lawan
+  * hasil
+  * XP
+
+---
+
+### 15. Sinkronisasi (Mutex)
+
+```c
+pthread_mutex_lock(&data->lock);
+// akses shared memory
+pthread_mutex_unlock(&data->lock);
+```
+
+#### Penjelasan:
+
+* Menghindari race condition
+* memastikan data konsisten saat diakses banyak proses
+
+---
+
+#### Output
+1. Saat compile dan run orion
+   <img width="463" height="120" alt="image" src="https://github.com/user-attachments/assets/3e79a249-6554-4bc1-8066-54b466cefe7c" />
+
+2. Saat run eternal
+   <img width="465" height="150" alt="image" src="https://github.com/user-attachments/assets/92afad04-2061-4f57-9479-9a3e01bcf686" />
+
+3. Saat user sudah berhasil register dan login
+   <img width="231" height="151" alt="image" src="https://github.com/user-attachments/assets/7c446cc3-dd93-4089-b6b7-228d85acbf0b" />
+   <img width="210" height="291" alt="image" src="https://github.com/user-attachments/assets/0f3fd83d-fc14-4b84-a6ce-a720f343d377" />         
+   <img width="162" height="219" alt="image" src="https://github.com/user-attachments/assets/8065ab51-f0fa-4e48-85bc-942a059fb3a4" />
+   <img width="285" height="359" alt="image" src="https://github.com/user-attachments/assets/84bef882-595b-4160-833c-8ea78473699e" />
    
+
+    
+
+
+
+
+
 
 
 
